@@ -1,0 +1,8 @@
+run = "bash run_tests.sh"
+entrypoint = "tests/test_example.py"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "python -m pytest --cov=src --cov-report=term-missing -v"]
