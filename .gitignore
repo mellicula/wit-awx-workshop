@@ -6,3 +6,4 @@ coverage.json
 *.egg-info/
 dist/
 .env
+.claude/
