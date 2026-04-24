@@ -1,103 +1,85 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse
-from pydantic import BaseModel
+from flask import Flask, request, jsonify, Response
 
-app = FastAPI()
+app = Flask(__name__)
 
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "changeme")
-TOTAL_BUGS = 4  # number of bugs planted in src_broken/
+TOTAL_BUGS = 4
 
-scores: dict[str, dict] = {}  # {username: {coverage, bugs_caught}}
-phase = "workshop"  # "workshop" or "reveal"
+scores: dict[str, dict] = {}
+phase = "workshop"
 
-
-# ── Models ────────────────────────────────────────────────────────────────────
-
-class ScorePayload(BaseModel):
-    username: str
-    coverage: float | None = None
-    bugs_caught: int | None = None
+BROKEN_DIR = Path(__file__).parent.parent / "src_broken"
 
 
-class AdminPayload(BaseModel):
-    key: str
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# ── API ───────────────────────────────────────────────────────────────────────
 
 @app.get("/phase")
 def get_phase():
-    return {"phase": phase}
+    return jsonify({"phase": phase})
 
 
 @app.post("/score")
-def post_score(payload: ScorePayload):
-    if payload.username not in scores:
-        scores[payload.username] = {"coverage": 0.0, "bugs_caught": None}
-    if payload.coverage is not None:
-        scores[payload.username]["coverage"] = payload.coverage
-    if payload.bugs_caught is not None:
-        scores[payload.username]["bugs_caught"] = payload.bugs_caught
-    return {"ok": True}
+def post_score():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "anonymous")
+    if username not in scores:
+        scores[username] = {"coverage": 0.0, "bugs_caught": None}
+    if data.get("coverage") is not None:
+        scores[username]["coverage"] = data["coverage"]
+    if data.get("bugs_caught") is not None:
+        scores[username]["bugs_caught"] = data["bugs_caught"]
+    return jsonify({"ok": True})
 
 
 @app.get("/api/scores")
 def get_scores():
-    rows = []
-    for username, data in scores.items():
-        rows.append({"username": username, **data})
-
+    rows = [{"username": u, **d} for u, d in scores.items()]
     if phase == "reveal":
         rows.sort(key=lambda r: (r.get("bugs_caught") or 0, r.get("coverage") or 0), reverse=True)
     else:
         rows.sort(key=lambda r: r.get("coverage") or 0, reverse=True)
-
-    return {"phase": phase, "total_bugs": TOTAL_BUGS, "scores": rows}
+    return jsonify({"phase": phase, "total_bugs": TOTAL_BUGS, "scores": rows})
 
 
 @app.post("/admin/reveal")
-def start_reveal(payload: AdminPayload):
+def start_reveal():
     global phase
-    if payload.key != ADMIN_KEY:
-        raise HTTPException(status_code=403, detail="Invalid key")
+    if (request.get_json(silent=True) or {}).get("key") != ADMIN_KEY:
+        return jsonify({"error": "Invalid key"}), 403
     phase = "reveal"
-    return {"ok": True, "phase": phase}
+    return jsonify({"ok": True, "phase": phase})
 
 
 @app.post("/admin/reset")
-def reset(payload: AdminPayload):
+def reset():
     global phase
-    if payload.key != ADMIN_KEY:
-        raise HTTPException(status_code=403, detail="Invalid key")
+    if (request.get_json(silent=True) or {}).get("key") != ADMIN_KEY:
+        return jsonify({"error": "Invalid key"}), 403
     scores.clear()
     phase = "workshop"
-    return {"ok": True}
+    return jsonify({"ok": True})
 
 
-# ── Broken source files (served only during reveal) ──────────────────────────
-
-BROKEN_DIR = Path(__file__).parent.parent / "src_broken"
-
-@app.get("/broken/{filename}", response_class=PlainTextResponse)
-def get_broken_file(filename: str):
+@app.get("/broken/<filename>")
+def get_broken_file(filename):
     if phase != "reveal":
-        raise HTTPException(status_code=403, detail="Not in reveal phase")
+        return jsonify({"error": "Not in reveal phase"}), 403
     allowed = {"currency.py", "wallet.py", "expense.py", "budget.py"}
     if filename not in allowed:
-        raise HTTPException(status_code=404)
+        return jsonify({"error": "Not found"}), 404
     path = BROKEN_DIR / filename
     if not path.exists():
-        raise HTTPException(status_code=404)
-    return path.read_text()
+        return jsonify({"error": "Not found"}), 404
+    return Response(path.read_text(), mimetype="text/plain")
 
 
 # ── Leaderboard page ──────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 def leaderboard():
-    return HTML
+    return Response(HTML, mimetype="text/html")
 
 
 HTML = """<!DOCTYPE html>
@@ -174,7 +156,6 @@ HTML = """<!DOCTYPE html>
     .bar-bugs     { background: #f87171; }
 
     .num { text-align: right; width: 80px; font-variant-numeric: tabular-nums; }
-
     .dim { color: #444; }
 
     #updated {
@@ -225,7 +206,7 @@ HTML = """<!DOCTYPE html>
 
       data.scores.forEach((s, i) => {
         const rank = i + 1;
-        const rankClass = rank <= 3 ? `rank-${rank}` : '';
+        const rankClass = rank <= 3 ? 'rank-' + rank : '';
         const pct   = (s.coverage ?? 0).toFixed(1);
         const bugs  = s.bugs_caught ?? null;
         const barPct = isReveal
