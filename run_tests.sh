@@ -3,8 +3,9 @@ set -e
 
 LEADERBOARD="https://wit-awx-workshop.onrender.com"
 STUDENT="${REPL_OWNER:-anonymous}"
+PYTHON=$(command -v python3 || command -v python)
 
-PHASE=$(curl -sf "$LEADERBOARD/phase" | python3 -c "import sys,json; print(json.load(sys.stdin)['phase'])" 2>/dev/null || echo "workshop")
+PHASE=$(curl -sf "$LEADERBOARD/phase" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['phase'])" 2>/dev/null || echo "workshop")
 
 if [ "$PHASE" = "reveal" ]; then
     echo "🔴  REVEAL MODE — running your tests against broken code..."
@@ -18,7 +19,7 @@ if [ "$PHASE" = "reveal" ]; then
     done
 
     set +e
-    OUTPUT=$(python -m pytest tests/ --tb=short -q 2>&1)
+    OUTPUT=$($PYTHON -m pytest tests/ --tb=short -q 2>&1)
     set -e
     echo "$OUTPUT"
 
@@ -38,10 +39,10 @@ else
     echo ""
 
     set +e
-    python -m pytest --cov=src --cov-report=term-missing --cov-report=json -v 2>&1
+    $PYTHON -m pytest --cov=src --cov-report=term-missing --cov-report=json -v 2>&1
     set -e
 
-    COVERAGE=$(python3 -c "
+    COVERAGE=$($PYTHON -c "
 import json
 try:
     d = json.load(open('coverage.json'))
