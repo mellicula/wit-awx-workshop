@@ -205,19 +205,41 @@ The leaderboard is hosted at [wit-awx-workshop.onrender.com](https://wit-awx-wor
 
 ## Running the Leaderboard Server (Facilitators)
 
+### Local development
+
+Add your admin key to a `.env` file in the project root:
+
+```
+ADMIN_KEY=your-secret-key
+```
+
+Then start the server:
+
 ```bash
 pip install -r server/requirements.txt
+flask --app server/main.py run --port 8080
+```
+
+> **Note:** macOS reserves port 5000 for AirPlay Receiver. Use `--port 8080` (or any other free port) to avoid the conflict.
+
+Open `http://127.0.0.1:8080` — the leaderboard and admin controls are on the same page.
+
+### Production (Render)
+
+```bash
 gunicorn server.main:app --bind 0.0.0.0:8000
 ```
 
-### Admin endpoints
+Set `ADMIN_KEY` as an environment variable in your Render dashboard.
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/admin/reveal` | POST | Switch to Phase 2 (reveal mode) |
-| `/admin/reset` | POST | Clear all scores, return to Phase 1 |
+### Admin controls
 
-Both require the `ADMIN_KEY` header set via environment variable.
+The **Flip to Reveal** and **Reset** buttons are in the top-right corner of the leaderboard page. No key entry required — the server reads `ADMIN_KEY` from the environment and embeds it automatically.
+
+| Button | What it does |
+|---|---|
+| Flip to Reveal | Switches to Phase 2; disables itself once active |
+| Reset | Clears all scores and returns to Phase 1 (asks for confirmation) |
 
 ---
 
@@ -229,3 +251,4 @@ Both require the `ADMIN_KEY` header set via environment variable.
 | `pytest-cov` | Coverage reporting |
 | `flask` | Leaderboard server |
 | `gunicorn` | Production WSGI server |
+| `python-dotenv` | Loads `.env` for local server development |
