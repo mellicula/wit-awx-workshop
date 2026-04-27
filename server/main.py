@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 from flask import Flask, request, jsonify, Response
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = Flask(__name__)
 
@@ -79,7 +82,8 @@ def get_broken_file(filename):
 
 @app.get("/")
 def leaderboard():
-    return Response(HTML, mimetype="text/html")
+    html = HTML.replace("__ADMIN_KEY__", ADMIN_KEY)
+    return Response(html, mimetype="text/html")
 
 
 HTML = """<!DOCTYPE html>
@@ -100,7 +104,7 @@ HTML = """<!DOCTYPE html>
 
     header {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 16px;
       margin-bottom: 40px;
     }
@@ -118,6 +122,34 @@ HTML = """<!DOCTYPE html>
 
     .badge-workshop { background: #1a3a2a; color: #4ade80; border: 1px solid #4ade80; }
     .badge-reveal   { background: #3a1a1a; color: #f87171; border: 1px solid #f87171; }
+
+    #admin-controls {
+      margin-left: auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #status-msg {
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    button {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover   { opacity: 0.8; }
+    button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    #btn-reveal { background: #f87171; color: #0a0a0a; }
+    #btn-reset  { background: #1f1f1f; color: #888; border: 1px solid #333; }
 
     table {
       width: 100%;
@@ -170,6 +202,11 @@ HTML = """<!DOCTYPE html>
   <header>
     <h1>WIT x Airwallex</h1>
     <span id="phase-badge">loading</span>
+    <div id="admin-controls">
+      <span id="status-msg"></span>
+      <button id="btn-reveal">Flip to Reveal</button>
+      <button id="btn-reset">Reset</button>
+    </div>
   </header>
 
   <table>
@@ -188,6 +225,8 @@ HTML = """<!DOCTYPE html>
   <div id="updated"></div>
 
   <script>
+    const ADMIN_KEY = "__ADMIN_KEY__";
+
     async function refresh() {
       const res = await fetch('/api/scores');
       const data = await res.json();
@@ -195,6 +234,8 @@ HTML = """<!DOCTYPE html>
       const badge = document.getElementById('phase-badge');
       badge.textContent = data.phase === 'reveal' ? 'Reveal' : 'Live';
       badge.className = 'badge-' + data.phase;
+
+      document.getElementById('btn-reveal').disabled = data.phase === 'reveal';
 
       const isReveal = data.phase === 'reveal';
       document.getElementById('bar-header').textContent  = isReveal ? 'Bugs caught' : 'Coverage';
@@ -233,6 +274,46 @@ HTML = """<!DOCTYPE html>
       document.getElementById('updated').textContent =
         'Updated ' + new Date().toLocaleTimeString();
     }
+
+    async function flipReveal() {
+      document.getElementById('btn-reveal').disabled = true;
+      setStatus('Switching...');
+      const res = await fetch('/admin/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: ADMIN_KEY })
+      });
+      if (res.ok) {
+        setStatus('');
+        refresh();
+      } else {
+        setStatus('Failed.');
+        document.getElementById('btn-reveal').disabled = false;
+      }
+    }
+
+    async function resetWorkshop() {
+      if (!confirm('Reset all scores and return to workshop mode?')) return;
+      setStatus('Resetting...');
+      const res = await fetch('/admin/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: ADMIN_KEY })
+      });
+      if (res.ok) {
+        setStatus('');
+        refresh();
+      } else {
+        setStatus('Failed.');
+      }
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status-msg').textContent = msg;
+    }
+
+    document.getElementById('btn-reveal').addEventListener('click', flipReveal);
+    document.getElementById('btn-reset').addEventListener('click', resetWorkshop);
 
     refresh();
     setInterval(refresh, 5000);
